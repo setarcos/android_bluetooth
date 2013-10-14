@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">MainActivity</string>
+    <string name="button_test">Test</string>
+    <string name="edit_message">Enter a message</string>
 </resources>
