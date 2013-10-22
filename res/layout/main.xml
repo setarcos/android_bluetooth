@@ -16,8 +16,13 @@
         <Button
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/button_test"
-            android:onClick="buttonClick" />
+            android:text="@string/button_send"
+            android:onClick="sendClick" />
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/button_conn"
+            android:onClick="connClick" />
     </LinearLayout>
     <TextView android:id="@+id/view_message"
         android:layout_width="fill_parent"
