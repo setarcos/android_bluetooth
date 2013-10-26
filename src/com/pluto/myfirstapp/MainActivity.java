@@ -9,6 +9,7 @@ import java.io.OutputStream;
 import android.util.Log;
 import android.app.Activity;
 import android.os.Bundle;
+import android.os.Handler;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -26,6 +27,9 @@ public class MainActivity extends Activity
     private static final int REQUEST_ENABLE_BT = 1;
     private static final UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
     private ConnectedThread mConnectedThread;
+    Handler mHandler;
+
+    private static final int MESSAGE_READ = 1;		// Status  for Handler
 
     /** Called when the activity is first created. */
     @Override
@@ -33,6 +37,16 @@ public class MainActivity extends Activity
     {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
+        mHandler = new Handler() {
+            public void handleMessage(android.os.Message msg) {
+                if (msg.what == MESSAGE_READ) {
+                    byte[] readBuf = (byte[]) msg.obj;
+                    String strIncom = new String(readBuf, 0, msg.arg1);					// create string from bytes array
+                    TextView viewMsg = (TextView) findViewById(R.id.view_message);
+                    viewMsg.append('\n' + strIncom);
+                }
+            }
+        };
     }
 
     @Override
@@ -115,7 +129,7 @@ public class MainActivity extends Activity
             btAdapter.cancelDiscovery();
             try {
                 // until it succeeds or throws an exception
-                mmSocket.connect();
+                mmSocket.connect(); // requires BLUETOOTH_ADMIN
             } catch (IOException connectException) {
                 // Unable to connect; close the socket and get out
                 try {
@@ -123,15 +137,13 @@ public class MainActivity extends Activity
                 } catch (IOException closeException) { }
                 return;
             }
-            Log.d("MYBT", "connected");
 
             // Keep listening to the InputStream until an exception occurs
             while (true) {
                 try {
                     // Read from the InputStream
                     bytes = mmInStream.read(buffer);        // Get number of bytes and message in "buffer"
-                    Log.d("MYBT", "got something");
-                //    h.obtainMessage(RECIEVE_MESSAGE, bytes, -1, buffer).sendToTarget();        // Send to message queue Handler
+                    mHandler.obtainMessage(MESSAGE_READ, bytes, -1, buffer).sendToTarget();        // Send to message queue Handler
                 } catch (IOException e) {
                     break;
                 }
@@ -143,10 +155,7 @@ public class MainActivity extends Activity
             byte[] msgBuffer = message.getBytes();
             try {
                 mmOutStream.write(msgBuffer);
-                Log.d("MYBT", "write msg");
-            } catch (IOException e) {
-                Log.d("MYBT", "...Error data send: " + e.getMessage() + "...");
-            }
+            } catch (IOException e) { }
         }
     }
 }
