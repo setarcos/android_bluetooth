@@ -53,14 +53,27 @@ public class MainActivity extends Activity
     protected void onActivityResult (int requestCode, int resultCode, Intent data)
     {
         super.onActivityResult(requestCode, resultCode, data);
-        if ((requestCode == REQUEST_ENABLE_BT) && (resultCode != RESULT_OK))
-            errorExit("Fatal Error", "蓝牙必须打开");
+        if ((requestCode == REQUEST_ENABLE_BT) && (resultCode != RESULT_OK)) {
+            TextView viewMsg = (TextView) findViewById(R.id.view_message);
+            viewMsg.append("\nBluetooth must be enabled.");
+        }
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        if (mConnectedThread != null)
+            mConnectedThread.cancel();
     }
 
     public void connClick(View view) {
+        if (mConnectedThread != null) return;
         TextView viewMsg = (TextView) findViewById(R.id.view_message);
         btAdapter = BluetoothAdapter.getDefaultAdapter();
-        checkBTState();
+        if (checkBTState() < 0) {
+            viewMsg.append("\nBluetooth not found/enabled.");
+            return;
+        }
 
         Set<BluetoothDevice> pairedDevices = btAdapter.getBondedDevices();
         if (pairedDevices.size() > 0) {
@@ -85,16 +98,19 @@ public class MainActivity extends Activity
             mConnectedThread.write(message);
     }
 
-    private void checkBTState() {
+    private int checkBTState() {
     // Check for Bluetooth support and then check to make sure it is turned on
-        if(btAdapter==null) {
+        if (btAdapter==null) {
             errorExit("Fatal Error", "不支持蓝牙");
+            return -1;
         } else {
             if (!btAdapter.isEnabled()) {
                 //Prompt user to turn on Bluetooth
                 Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
                 startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
+                return -2;
             }
+            return 0;
         }
     }
 
@@ -148,6 +164,7 @@ public class MainActivity extends Activity
                     break;
                 }
             }
+            Log.d("MYBT", "BT Thread die");
         }
 
         /* Call this from the main activity to send data to the remote device */
@@ -156,6 +173,12 @@ public class MainActivity extends Activity
             try {
                 mmOutStream.write(msgBuffer);
             } catch (IOException e) { }
+        }
+
+        public void cancel() {
+            try {
+                mmSocket.close();
+            } catch (IOException e) {}
         }
     }
 }

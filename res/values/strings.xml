@@ -4,4 +4,5 @@
     <string name="button_conn">连接</string>
     <string name="button_send">发送</string>
     <string name="edit_message">Enter a message</string>
+    <string name="view_message">Hello World</string>
 </resources>
