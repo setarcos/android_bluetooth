@@ -21,15 +21,18 @@ import android.bluetooth.BluetoothSocket;
 
 public class MainActivity extends Activity
 {
-    private BluetoothAdapter btAdapter = null;
-    private BluetoothSocket btSocket = null;
     private BluetoothDevice btDevice = null;
     private static final int REQUEST_ENABLE_BT = 1;
     private static final UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
+    private static final String TAG = "MYBT";
+    private static final String STATE_BT = "MYBT";
     private ConnectedThread mConnectedThread;
     Handler mHandler;
+    private int mBtState = 0;
+    private int err_count = 0;
 
     private static final int MESSAGE_READ = 1;		// Status  for Handler
+    private static final int MESSAGE_FAIL = 2;		// Status  for Handler
 
     /** Called when the activity is first created. */
     @Override
@@ -37,6 +40,9 @@ public class MainActivity extends Activity
     {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
+        if (savedInstanceState != null) {
+            mBtState = savedInstanceState.getInt(STATE_BT);
+        }
         mHandler = new Handler() {
             public void handleMessage(android.os.Message msg) {
                 if (msg.what == MESSAGE_READ) {
@@ -44,6 +50,12 @@ public class MainActivity extends Activity
                     String strIncom = new String(readBuf, 0, msg.arg1);					// create string from bytes array
                     TextView viewMsg = (TextView) findViewById(R.id.view_message);
                     viewMsg.append('\n' + strIncom);
+                }
+                if (msg.what == MESSAGE_FAIL) {
+                    err_count++;
+                    mBtState = 0;
+                    mConnectedThread = null;
+                    if (err_count < 3) connClick(null);
                 }
             }
         };
@@ -64,13 +76,28 @@ public class MainActivity extends Activity
         super.onPause();
         if (mConnectedThread != null)
             mConnectedThread.cancel();
+        mConnectedThread = null; // set it to null, since the thread has been stopped.
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (mBtState == 1)
+            connClick(null);
+    }
+
+    @Override
+    public void onSaveInstanceState(Bundle savedInstanceState) {
+        super.onSaveInstanceState(savedInstanceState);
+        savedInstanceState.putInt(STATE_BT, mBtState);
     }
 
     public void connClick(View view) {
+        BluetoothAdapter btAdapter = null;
         if (mConnectedThread != null) return;
         TextView viewMsg = (TextView) findViewById(R.id.view_message);
         btAdapter = BluetoothAdapter.getDefaultAdapter();
-        if (checkBTState() < 0) {
+        if (checkBTState(btAdapter) < 0) {
             viewMsg.append("\nBluetooth not found/enabled.");
             return;
         }
@@ -78,14 +105,16 @@ public class MainActivity extends Activity
         Set<BluetoothDevice> pairedDevices = btAdapter.getBondedDevices();
         if (pairedDevices.size() > 0) {
             for (BluetoothDevice device : pairedDevices) {
-                viewMsg.append('\n' + device.getName()); // device.getAddress()
+                if (view != null) viewMsg.append('\n' + device.getName()); // device.getAddress()
                 if (device.getName().indexOf("HC-05") >= 0)
                     btDevice = device;
             }
         }
+        btAdapter.cancelDiscovery();
         if (btDevice != null) {
             mConnectedThread = new ConnectedThread(btDevice);
             mConnectedThread.start();
+            mBtState = 1;
         } else {
             errorExit("Fatal Error", "没有找到蓝牙串口");
         }
@@ -98,7 +127,7 @@ public class MainActivity extends Activity
             mConnectedThread.write(message);
     }
 
-    private int checkBTState() {
+    private int checkBTState(BluetoothAdapter btAdapter) {
     // Check for Bluetooth support and then check to make sure it is turned on
         if (btAdapter==null) {
             errorExit("Fatal Error", "不支持蓝牙");
@@ -142,15 +171,16 @@ public class MainActivity extends Activity
         public void run() {
             byte[] buffer = new byte[256];  // buffer store for the stream
             int bytes; // bytes returned from read()
-            btAdapter.cancelDiscovery();
             try {
                 // until it succeeds or throws an exception
                 mmSocket.connect(); // requires BLUETOOTH_ADMIN
             } catch (IOException connectException) {
                 // Unable to connect; close the socket and get out
+                Log.d(TAG, "mmSocket: " + connectException.getMessage());
                 try {
                     mmSocket.close();
                 } catch (IOException closeException) { }
+                mHandler.obtainMessage(MESSAGE_FAIL).sendToTarget();
                 return;
             }
 
@@ -164,7 +194,7 @@ public class MainActivity extends Activity
                     break;
                 }
             }
-            Log.d("MYBT", "BT Thread die");
+            Log.d(TAG, "BT Thread die");
         }
 
         /* Call this from the main activity to send data to the remote device */
