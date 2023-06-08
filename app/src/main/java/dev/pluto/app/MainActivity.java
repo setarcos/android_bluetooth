@@ -1,4 +1,4 @@
-package com.pluto.myfirstapp;
+package dev.pluto.app;
 
 import java.util.Set;
 import java.util.UUID;

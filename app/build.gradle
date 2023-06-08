@@ -1,0 +1,19 @@
+plugins {
+    id 'com.android.application'
+}
+
+repositories {
+    maven { url 'https://maven.aliyun.com/nexus/content/repositories/google' }
+    maven { url 'https://maven.aliyun.com/nexus/content/groups/public/' }
+    //mavenCentral()
+}
+
+android {
+    compileSdk 30
+
+    defaultConfig {
+        applicationId "dev.pluto.app"
+        minSdk 21
+        targetSdk 30
+    }
+}
