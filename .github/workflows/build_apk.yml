@@ -1,0 +1,38 @@
+name: Auto build debug apk
+ 
+on:
+  push:
+    branches:
+      - 'master'
+    tags:
+      - '*'
+jobs:
+  test:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: set up JDK
+        uses: actions/setup-java@v1
+        with:
+          java-version: 11
+      - name: Unit tests
+        run: bash ./gradlew test --stacktrace
+ 
+  apk:
+    name: Generate APK
+    runs-on: ubuntu-latest
+ 
+    steps:
+      - uses: actions/checkout@v2
+      - name: set up JDK
+        uses: actions/setup-java@v1
+        with:
+          java-version: 11
+      - name: Build debug APK
+        run: bash ./gradlew assembleDebug --stacktrace
+      - name: Upload APK
+        uses: actions/upload-artifact@v2
+        with:
+          name: bluetooth-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
