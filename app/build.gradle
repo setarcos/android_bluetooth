@@ -2,18 +2,33 @@ plugins {
     id 'com.android.application'
 }
 
-repositories {
-    maven { url 'https://maven.aliyun.com/nexus/content/repositories/google' }
-    maven { url 'https://maven.aliyun.com/nexus/content/groups/public/' }
-    //mavenCentral()
-}
-
 android {
-    compileSdk 30
+    namespace 'dev.pluto.app'
+    compileSdk 33
+    // AGP 8.1 defaults to build-tools 33.0.1; pin 33.0.2 so the build needs no download
+    buildToolsVersion '33.0.2'
 
     defaultConfig {
         applicationId "dev.pluto.app"
         minSdk 21
-        targetSdk 30
+        targetSdk 33
+        versionCode 1
+        versionName "1.0"
+    }
+
+    signingConfigs {
+        release {
+            storeFile file("$rootDir/../keystore.jks")
+            storePassword 'android'
+            keyAlias 'androidkey'
+            keyPassword 'android'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
     }
 }

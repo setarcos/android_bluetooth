@@ -1,2 +1,5 @@
 build
 .gradle
+
+# sdk.dir points at a local SDK installation
+local.properties
