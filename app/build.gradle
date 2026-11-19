@@ -16,9 +16,12 @@ android {
         versionName "1.0"
     }
 
+    // The keystore is intentionally not part of the repository.
+    def releaseKeystore = file("$rootDir/../keystore.jks")
+
     signingConfigs {
         release {
-            storeFile file("$rootDir/../keystore.jks")
+            storeFile releaseKeystore
             storePassword 'android'
             keyAlias 'androidkey'
             keyPassword 'android'
@@ -28,7 +31,9 @@ android {
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.release
+            if (releaseKeystore.exists()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
