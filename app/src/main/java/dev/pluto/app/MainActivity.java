@@ -1,15 +1,21 @@
 package dev.pluto.app;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
+import android.Manifest;
+import android.annotation.SuppressLint;
 import android.util.Log;
 import android.app.Activity;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.content.pm.PackageManager;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -17,6 +23,7 @@ import android.widget.Toast;
 import android.content.Intent;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothSocket;
 
 public class MainActivity extends Activity
@@ -26,6 +33,14 @@ public class MainActivity extends Activity
     private static final UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
     private static final String TAG = "MYBT";
     private static final String STATE_BT = "MYBT";
+    private static final int REQUEST_PERMS = 2;
+
+    // Bluetooth became a runtime permission in Android 12 (API 31). These constants
+    // are inlined at compile time, so they are harmless on older devices.
+    @SuppressLint("InlinedApi")
+    private static final String[] BT_PERMS = {
+            Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN
+    };
     private ConnectedThread mConnectedThread;
     Handler mHandler;
     private int mBtState = 0;
@@ -92,21 +107,37 @@ public class MainActivity extends Activity
         savedInstanceState.putInt(STATE_BT, mBtState);
     }
 
+    // Permissions are enforced by ensureBtPermissions() / onRequestPermissionsResult().
+    // Lint cannot see across that call boundary, so it is suppressed explicitly here.
+    @SuppressLint("MissingPermission")
     public void connClick(View view) {
         BluetoothAdapter btAdapter = null;
         if (mConnectedThread != null) return;
         TextView viewMsg = (TextView) findViewById(R.id.view_message);
-        btAdapter = BluetoothAdapter.getDefaultAdapter();
+        if (!ensureBtPermissions()) {
+            viewMsg.append("\n需要蓝牙权限，授权后自动连接");
+            return;
+        }
+        btAdapter = getBtAdapter();
         if (checkBTState(btAdapter) < 0) {
             viewMsg.append("\nBluetooth not found/enabled.");
             return;
         }
 
-        Set<BluetoothDevice> pairedDevices = btAdapter.getBondedDevices();
+        Set<BluetoothDevice> pairedDevices;
+        try {
+            pairedDevices = btAdapter.getBondedDevices();
+        } catch (SecurityException e) {
+            // the user may revoke the permission mid-session
+            errorExit("Fatal Error", "缺少蓝牙权限");
+            return;
+        }
         if (pairedDevices.size() > 0) {
             for (BluetoothDevice device : pairedDevices) {
-                if (view != null) viewMsg.append('\n' + device.getName()); // device.getAddress()
-                if (device.getName().indexOf("HC-05") >= 0)
+                String name = device.getName();
+                if (name == null) name = device.getAddress();
+                if (view != null) viewMsg.append('\n' + name);
+                if (name.indexOf("HC-05") >= 0)
                     btDevice = device;
             }
         }
@@ -127,6 +158,45 @@ public class MainActivity extends Activity
             mConnectedThread.write(message);
     }
 
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQUEST_PERMS) return;
+        for (int result : grantResults) {
+            if (result != PackageManager.PERMISSION_GRANTED) {
+                TextView viewMsg = (TextView) findViewById(R.id.view_message);
+                viewMsg.append("\n蓝牙权限被拒绝，无法连接");
+                return;
+            }
+        }
+        connClick(null);
+    }
+
+    /** Returns true below Android 12; from API 31 on the permission must be granted at runtime. */
+    private boolean ensureBtPermissions() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true;
+        List<String> missing = new ArrayList<>();
+        for (String perm : BT_PERMS) {
+            if (checkSelfPermission(perm) != PackageManager.PERMISSION_GRANTED) missing.add(perm);
+        }
+        if (missing.isEmpty()) return true;
+        requestPermissions(missing.toArray(new String[0]), REQUEST_PERMS);
+        return false;
+    }
+
+    private BluetoothAdapter getBtAdapter() {
+        BluetoothManager manager = (BluetoothManager) getSystemService(BLUETOOTH_SERVICE);
+        return manager == null ? null : manager.getAdapter();
+    }
+
+    private static void closeQuietly(BluetoothSocket socket) {
+        if (socket == null) return;
+        try {
+            socket.close();
+        } catch (IOException ignored) { }
+    }
+
+    @SuppressLint("MissingPermission")
     private int checkBTState(BluetoothAdapter btAdapter) {
     // Check for Bluetooth support and then check to make sure it is turned on
         if (btAdapter==null) {
@@ -162,19 +232,33 @@ public class MainActivity extends Activity
                 tmp = device.createRfcommSocketToServiceRecord(MY_UUID);
                 tmpIn = tmp.getInputStream();
                 tmpOut = tmp.getOutputStream();
-            } catch (IOException e) { }
+            } catch (IOException | SecurityException e) {
+                Log.d(TAG, "create socket failed: " + e.getMessage());
+                closeQuietly(tmp);
+                tmp = null;
+                tmpIn = null;
+                tmpOut = null;
+            }
             mmSocket = tmp;
             mmInStream = tmpIn;
             mmOutStream = tmpOut;
         }
 
         public void run() {
+            // A failed constructor call leaves all three fields null. Bail out first:
+            // an NPE here would not be caught by catch (IOException) and the thread
+            // would die silently.
+            if (mmSocket == null || mmInStream == null || mmOutStream == null) {
+                Log.d(TAG, "socket not ready");
+                mHandler.obtainMessage(MESSAGE_FAIL).sendToTarget();
+                return;
+            }
             byte[] buffer = new byte[256];  // buffer store for the stream
             int bytes; // bytes returned from read()
             try {
                 // until it succeeds or throws an exception
                 mmSocket.connect(); // requires BLUETOOTH_ADMIN
-            } catch (IOException connectException) {
+            } catch (IOException | SecurityException connectException) {
                 // Unable to connect; close the socket and get out
                 Log.d(TAG, "mmSocket: " + connectException.getMessage());
                 try {
@@ -190,7 +274,7 @@ public class MainActivity extends Activity
                     // Read from the InputStream
                     bytes = mmInStream.read(buffer);        // Get number of bytes and message in "buffer"
                     mHandler.obtainMessage(MESSAGE_READ, bytes, -1, buffer).sendToTarget();        // Send to message queue Handler
-                } catch (IOException e) {
+                } catch (IOException | SecurityException e) {
                     break;
                 }
             }
@@ -199,16 +283,15 @@ public class MainActivity extends Activity
 
         /* Call this from the main activity to send data to the remote device */
         public void write(String message) {
+            if (mmOutStream == null) return;
             byte[] msgBuffer = message.getBytes();
             try {
                 mmOutStream.write(msgBuffer);
-            } catch (IOException e) { }
+            } catch (IOException | SecurityException e) { }
         }
 
         public void cancel() {
-            try {
-                mmSocket.close();
-            } catch (IOException e) {}
+            closeQuietly(mmSocket);
         }
     }
 }
